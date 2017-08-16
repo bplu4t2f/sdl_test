@@ -1,10 +1,15 @@
 // Need this to bypass the retarded main redirect logic
 #define SDL_MAIN_HANDLED
 
+#define GL_GLEXT_PROTOTYPES
+
 #include <stdio.h>
 #include <SDL.h>
 #include <Windows.h>
 #include <SDL_opengl.h>
+
+#include <gl/GL.h>
+#include <gl/GLU.h>
 
 
 static int main_opengl();
@@ -196,20 +201,26 @@ int main_opengl()
 		float r = fc_mod4 == 0 || fc_mod4 == 3 ? 1.0f : 0.0f;
 		float g = fc_mod4 != 3 ? 1.0f : 0.0f;
 		float b = fc_mod4 == 1 ? 1.0f : 0.0f;
-		//glColor3f(r, g, b);
 		glColor3f(r, g, b);
+
+		// This is ridiculous - if we render 20000 rects, everything is OK, if we render
+		// only 20, everything is horrible.
+		int num_rects = ((frame_counter / 120) & 1) ? 20000 : 20;
+
 		glBegin(GL_QUADS);
-		for (int i = 0; i < 20; ++i)
+		for (int i = 0; i < num_rects; ++i)
 		{
 			glVertex3f(10.0f + fc_mod8 * 20.0f, 10.0f + i * 20, 0.0f);
 			glVertex3f(10.0f + fc_mod8 * 20.0f, 20.0f + i * 20, 0.0f);
 			glVertex3f(20.0f + fc_mod8 * 20.0f, 20.0f + i * 20, 0.0f);
 			glVertex3f(20.0f + fc_mod8 * 20.0f, 10.0f + i * 20, 0.0f);
 		}
+
 		glEnd();
-		glFlush();
 #endif
 
+		
+		glFlush();
 		SDL_GL_SwapWindow(window);
 	}
 
