@@ -8,18 +8,23 @@
 
 
 static int main_opengl();
-static int main_sdl_default();
+static int main_sdl();
 
 
 int main(int argc, char **argv)
 {
-#if 0
+#if 1
 	main_opengl();
 #else
 	// Should use D3D9 by default
-	main_sdl_default();
+	main_sdl();
 #endif
 }
+
+
+//
+// This version uses OpenGL directly to do all the drawing.
+//
 
 int main_opengl()
 {
@@ -29,6 +34,7 @@ int main_opengl()
 	}
 
 #if 0
+	// This block seems to have no effect on the problem
 	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
@@ -37,11 +43,10 @@ int main_opengl()
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
-
-#ifdef GL_DEBUG
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
 #endif
 
+#if 0
+	// Enabling multisampling seems to improve the issue, but it's not good enough yet.
 	SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0); // @TODO doesn't seem to be necessary
 	SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
 #endif
@@ -104,6 +109,70 @@ int main_opengl()
 			}
 		}
 
+
+
+#if 0
+		// This block is stolen from obbg (https://github.com/nothings/obbg)
+		// See main.c line 600 and following
+		// If we can get something equivalent working, the problem should be alleviated significantly.
+
+		for (distance = 0; distance <= rad; ++distance) {
+			for (j = -distance; j <= distance; ++j) {
+				for (i = -distance; i <= distance; ++i) {
+					int cx = qchunk_x + i;
+					int cy = qchunk_y + j;
+					int slot_x = cx & (C_MESH_CHUNK_CACHE_X - 1);
+					int slot_y = cy & (C_MESH_CHUNK_CACHE_Y - 1);
+					mesh_chunk *mc = c_mesh_cache[slot_y][slot_x];
+
+					if (stb_max(abs(i), abs(j)) != distance)
+						continue;
+
+					if (i*i + j*j > rad*rad)
+						continue;
+
+					if (mc == NULL || mc->placeholder_for_size_info || mc->chunk_x != cx || mc->chunk_y != cy || mc->vbuf == 0) {
+						float estimated_bounds[2][3];
+						if (num_build_remaining == 0)
+							continue;
+						estimated_bounds[0][0] = (float)(cx << MESH_CHUNK_SIZE_X_LOG2);
+						estimated_bounds[0][1] = (float)(cy << MESH_CHUNK_SIZE_Y_LOG2);
+						estimated_bounds[0][2] = (float)(0);
+						estimated_bounds[1][0] = (float)((cx + 1) << MESH_CHUNK_SIZE_X_LOG2);
+						estimated_bounds[1][1] = (float)((cy + 1) << MESH_CHUNK_SIZE_Y_LOG2);
+						estimated_bounds[1][2] = (float)(255);
+						if (!is_box_in_frustum(estimated_bounds[0], estimated_bounds[1]))
+							continue;
+						mc = build_mesh_chunk_for_coord(mc, cx * C_MESH_CHUNK_CACHE_X, cy * C_MESH_CHUNK_CACHE_Y);
+						--num_build_remaining;
+					}
+
+					++chunk_locations;
+
+					++chunks_considered;
+					quads_considered += mc->num_quads;
+					chunk_storage_considered += mc->num_quads * 20;
+
+					if (mc->num_quads && !mc->placeholder_for_size_info) {
+						if (is_box_in_frustum(mc->bounds[0], mc->bounds[1])) {
+							// @TODO if in range, frustum cull
+							stbglUniform3fv(stbgl_find_uniform(main_prog, "transform"), 3, mc->transform[0]);
+							glBindBufferARB(GL_ARRAY_BUFFER_ARB, mc->vbuf);
+							glVertexAttribIPointer(0, 1, GL_UNSIGNED_INT, 4, (void*)0);
+							glBindTexture(GL_TEXTURE_BUFFER_ARB, mc->fbuf_tex);
+
+							glDrawArrays(GL_QUADS, 0, mc->num_quads * 4);
+
+							quads_rendered += mc->num_quads;
+							++chunks_in_frustum;
+							chunk_storage_rendered += mc->num_quads * 20;
+						}
+					}
+				}
+			}
+		}
+#endif
+
 		int fc_mod4 = frame_counter % 4;
 		int fc_mod8 = frame_counter % 8;
 
@@ -153,7 +222,12 @@ _quit:
 	return 0;
 }
 
-int main_sdl_default()
+
+//
+// This version uses SDL to do all the drawing, and doesn't use any OpenGL API directly
+//
+
+int main_sdl()
 {
 	if (SDL_Init(SDL_INIT_VIDEO) != 0)
 	{
@@ -166,12 +240,29 @@ int main_sdl_default()
 		return 1;
 	}
 
+	int selected_renderer_index = -1;
+	int num_render_drivers = SDL_GetNumRenderDrivers();
+	for (int i = 0; i < num_render_drivers; ++i)
+	{
+		SDL_RendererInfo info;
+		SDL_GetRenderDriverInfo(i, &info);
+		printf("Available renderer %d: %s\r\n", i, info.name);
+#if 1
+		// Use #if 0 to use the default, which should be d3d, and #if 1 to use Open GL with SDL abstraction.
+		if (!strcmp("opengl", info.name))
+		{
+			printf("^ using this renderer\r\n");
+			selected_renderer_index = i;
+		}
+#endif
+	}
+
 	Uint32 sdl_renderer_flags = SDL_RENDERER_ACCELERATED;
 #if 1
 	// enable vsync
 	sdl_renderer_flags |= SDL_RENDERER_PRESENTVSYNC;
 #endif
-	SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, sdl_renderer_flags);
+	SDL_Renderer *renderer = SDL_CreateRenderer(window, selected_renderer_index, sdl_renderer_flags);
 	if (renderer == NULL)
 	{
 		return 1;
@@ -225,7 +316,6 @@ int main_sdl_default()
 
 #if 1
 		// Draw 8 square columns:
-
 #define RECT_COUNT 20
 		SDL_Rect rects[RECT_COUNT];
 		Uint8 r = fc_mod4 == 0 || fc_mod4 == 3 ? 255 : 0;
@@ -240,7 +330,6 @@ int main_sdl_default()
 			rects[i].h = 10;
 		}
 		SDL_RenderFillRects(renderer, rects, RECT_COUNT);
-
 #endif
 
 		SDL_RenderPresent(renderer);
