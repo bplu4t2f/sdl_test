@@ -33,7 +33,7 @@ int main_opengl()
 	if (SDL_Init(SDL_INIT_VIDEO) != 0)
 	{
 		printf("sdl init failed %s\n", SDL_GetError());
-		return 1;
+		//return 1;
 	}
 
 #if 0
@@ -64,20 +64,20 @@ int main_opengl()
 	if (window == NULL)
 	{
 		printf("window failed %s\n", SDL_GetError());
-		return 1;
+		//return 1;
 	}
 
 	SDL_GLContext context = SDL_GL_CreateContext(window);
 	if (context == NULL)
 	{
 		printf("context failed %s\n", SDL_GetError());
-		return 1;
+		//return 1;
 	}
 
 	if (SDL_GL_MakeCurrent(window, context) != 0)
 	{
 		printf("make current failed %s \n", SDL_GetError());
-		return 1;
+		//return 1;
 	}
 
 #if 1
@@ -85,7 +85,7 @@ int main_opengl()
 	if (SDL_GL_SetSwapInterval(1) != 0)
 	{
 		printf("set swap interval failed %s\n", SDL_GetError());
-		return 1;
+		//return 1;
 	}
 #endif
 
